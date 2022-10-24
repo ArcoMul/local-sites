@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Sites</title>
+    <style>
+      body {
+        font-family: Verdana, Geneva, Tahoma, sans-serif;
+        font-size: 93.75%;
+        margin: 2rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+      }
+      ul {
+        padding-left: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Local Sites</h1>
+    <p id="position">Loading location...</p>
+    <ul id="website-list"><li>Loading closeby websites...</li></ul>
+    <script>
+      const overpassAPIUrl = "https://overpass-api.de/api/interpreter";
+      const $websiteList = document.getElementById("website-list");
+      const $position = document.getElementById("position");
+
+      init();
+
+      async function init() {
+        console.log("before location");
+        const location = await getLocation();
+        $position.textContent = `Your location: ${location.latitude}, ${location.longitude}`;
+        console.log("location", location);
+        const elements = await fetchElements(
+          500,
+          location.latitude,
+          location.longitude
+        );
+        console.log(elements);
+        elements.forEach((element) => {
+          element.distance = Math.round(
+            getDistanceFromLatLonInKm(
+              location.latitude,
+              location.longitude,
+              element.lat,
+              element.lon
+            ) * 1000
+          );
+        });
+        elements.sort((a, b) => a.distance - b.distance);
+        $websiteList.innerHTML = '';
+        elements.forEach((element) => {
+            if (!element.tags) {
+                return
+            }
+          const $li = document.createElement("li");
+          const $p = document.createElement("p");
+          const $span = document.createElement("span");
+          const $a = document.createElement("a");
+          $a.textContent = element.tags.name;
+          $a.setAttribute("href", element.tags.website);
+          $a.setAttribute("target", "_blank");
+          $p.appendChild($a);
+          let info = [];
+          if (element.tags) {
+            if (element.tags.amenity) {
+              info.push(element.tags.amenity);
+            }
+            if (element.tags.shop) {
+              info.push(element.tags.shop);
+            }
+            if (element.tags.healthcare) {
+              info.push(element.tags.healthcare);
+            }
+          }
+          info.push(element.distance + "m");
+          $span.textContent = ` (${info.join(", ")})`;
+          $p.appendChild($span);
+          $li.appendChild($p);
+          $websiteList.appendChild($li);
+        });
+      }
+
+      function getLocation() {
+        return new Promise((resolve, reject) => {
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((position) => {
+              console.log("getCurrentPosition!", position);
+              resolve(position.coords);
+            });
+          } else {
+            reject();
+          }
+        });
+      }
+
+      async function fetchElements(distance, latitude, longitude) {
+        try {
+          var details = {
+            data: `[out:json];(node["website"](around:${distance}, ${latitude}, ${longitude}););out body;out skel qt;`,
+          };
+
+          var formBody = [];
+          for (var property in details) {
+            var encodedKey = encodeURIComponent(property);
+            var encodedValue = encodeURIComponent(details[property]);
+            formBody.push(encodedKey + "=" + encodedValue);
+          }
+          formBody = formBody.join("&");
+
+          const json = await fetch(overpassAPIUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            },
+            body: formBody,
+          });
+          const result = await json.json();
+          return result.elements;
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+        var R = 6371; // Radius of the earth in km
+        var dLat = deg2rad(lat2 - lat1); // deg2rad below
+        var dLon = deg2rad(lon2 - lon1);
+        var a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(deg2rad(lat1)) *
+            Math.cos(deg2rad(lat2)) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        var d = R * c; // Distance in km
+        return d;
+      }
+
+      function deg2rad(deg) {
+        return deg * (Math.PI / 180);
+      }
+    </script>
+  </body>
+</html>
